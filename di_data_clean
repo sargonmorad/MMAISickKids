@@ -1,0 +1,139 @@
+import numpy as np
+import scipy as sp
+import pandas as pd
+import matplotlib as mpl
+import datetime as dt
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn import preprocessing
+
+from IPython.display import display, HTML
+
+#Below is for running jupyter notebook
+#import sys
+#!{sys.executable} -m pip install seaborn
+#import seaborn as sns
+
+#import ED DI Data
+di2018q3 = pd.read_excel('didata/ED DI 2018 - Q3.xlsx')
+di2018q4 = pd.read_excel('didata/ED DI 2018 - Q4.xlsx')
+di2019q1 = pd.read_excel('didata/ED DI 2019 - Q1.xlsx')
+di2019q2 = pd.read_excel('didata/ED DI 2019 - Q2 20190621.xlsx')
+
+di_data = pd.merge(di2018q3, di2018q4, how='outer')
+di_data = pd.merge(di_data, di2019q1, how='outer')
+di_data = pd.merge(di_data, di2019q2, how='outer')
+
+#make master copies of data sets - everything below can be done with following dataframes
+#di_data_master = di_data.copy()
+epic_data_master = epic_data.copy()
+#use di_data and epic_data for operations below
+
+#USE ONLY TO RESET - back to line 32#
+#di_data = di_data_master.copy()
+#epic_data = epic_data_master()
+
+#drop Accession # column
+di_data = di_data.drop(['Accession #'], axis=1)
+#drop 'Reason for Exam' column
+di_data = di_data.drop(['Reason for Exam'], axis=1)
+
+#Convert string time entries into datetime objects
+di_data['End Exam Time'] = pd.to_datetime(di_data['End Exam Time'], format="%a %d %b %Y %I:%M %p")
+di_data['Order Time'] = pd.to_datetime(di_data['Order Time'], format="%Y/%m/%d %H:%M")
+di_data['Finalized Time'] = pd.to_datetime(di_data['Finalized Time'], format="%d/%m/%Y %I:%M:%S %p", errors='coerce')
+di_data['Protocolling Instant'] = pd.to_datetime(di_data['Protocolling Instant'], format="%d/%m/%Y %I:%M %p", errors='coerce')
+
+#create a categories df
+categories = pd.DataFrame(di_data[['Category']])
+categories['Category id'] = categories.groupby(['Category']).ngroup()
+categories = categories.drop_duplicates()
+categories = categories.sort_values('Category id')
+
+#create a procedure  df
+procedures = pd.DataFrame(di_data[['Procedure']])
+procedures['Procedure id'] = procedures.groupby(['Procedure']).ngroup()
+procedures = procedures.drop_duplicates()
+procedures = procedures.sort_values('Procedure id')
+
+#create Authorizing Provider df
+authorizing_provider = pd.DataFrame(di_data[['Authorizing Provider']])
+authorizing_provider['Authorizing Provider id'] = authorizing_provider.groupby(['Authorizing Provider']).ngroup()
+authorizing_provider = authorizing_provider.drop_duplicates()
+authorizing_provider = authorizing_provider.sort_values('Authorizing Provider id')
+
+#create Finalizing Phsycian df
+finalizing_physician = pd.DataFrame(di_data[['Finalizing Physician']])
+finalizing_physician['Finalizing Physician id'] = finalizing_physician.groupby(['Finalizing Physician']).ngroup()
+finalizing_physician = finalizing_physician.drop_duplicates()
+finalizing_physician = finalizing_physician.sort_values('Finalizing Physician id')
+
+#combine di_data set with newly created dfs that have ids
+di_data = pd.merge(di_data, categories, how='left', on='Category')
+di_data = pd.merge(di_data, procedures, how='left', on='Procedure')
+di_data = pd.merge(di_data, authorizing_provider, how='left', on='Authorizing Provider')
+di_data = pd.merge(di_data, finalizing_physician, how='left', on='Finalizing Physician')
+
+di_data = di_data.drop(['Procedure', 'Authorizing Provider', 'Name', 'Finalizing Physician'], axis=1)
+
+di_data['Exam Duration (min)'] = di_data['End Exam Time'] - di_data['Order Time']
+di_data['Exam Duration (min)'] = di_data['Exam Duration (min)']/np.timedelta64(1,'m')
+
+di_data['OT Day of Week'] = di_data['Order Time'].dt.dayofweek
+di_data['OT Day Name'] = di_data['Order Time'].dt.day_name()
+di_data['OT Month'] = di_data['Order Time'].dt.month
+di_data['OT Month Name'] = di_data['Order Time'].dt.month_name()
+di_data['OT Hour'] = di_data['Order Time'].dt.hour
+
+#rearrange columns
+di_data = di_data[['MRN', 'Order ID', 'Order Time', 'End Exam Time', 'Finalized Time', 'Exam Duration (min)', 'OT Day of Week', 'OT Day Name', 'OT Month', 'OT Month Name', 'OT Hour', 'Category', 'Category id', 'Procedure id', 'Authorizing Provider id', 'Finalizing Physician id', 'Order to Protocolled (min)', 'Protocolled to Begin (min)', 'Order to Begin (min)', 'Begin to End (min)', 'End to Prelim (min)', 'End to Sign (min)', 'Order to End (min)', 'Order to Sign (min)', 'Protocolling Instant']]
+
+di_data['OT PM'] = di_data['OT Hour'].apply(lambda x: 1 if x>=12 else 0)
+di_data['OT Monday'] = di_data['OT Day of Week'].apply(lambda x: 1 if x==0 else 0)
+di_data['OT Tuesday'] = di_data['OT Day of Week'].apply(lambda x: 1 if x==1 else 0)
+di_data['OT Wednesday'] = di_data['OT Day of Week'].apply(lambda x: 1 if x==2 else 0)
+di_data['OT Thursday'] = di_data['OT Day of Week'].apply(lambda x: 1 if x==3 else 0)
+di_data['OT Friday'] = di_data['OT Day of Week'].apply(lambda x: 1 if x==4 else 0)
+di_data['OT Saturday'] = di_data['OT Day of Week'].apply(lambda x: 1 if x==5 else 0)
+di_data['OT Sunday'] = di_data['OT Day of Week'].apply(lambda x: 1 if x==6 else 0)
+di_data['OT January'] = di_data['OT Month'].apply(lambda x: 1 if x==1 else 0)
+di_data['OT February'] = di_data['OT Month'].apply(lambda x: 1 if x==2 else 0)
+di_data['OT March'] = di_data['OT Month'].apply(lambda x: 1 if x==3 else 0)
+di_data['OT April'] = di_data['OT Month'].apply(lambda x: 1 if x==4 else 0)
+di_data['OT May'] = di_data['OT Month'].apply(lambda x: 1 if x==5 else 0)
+di_data['OT June'] = di_data['OT Month'].apply(lambda x: 1 if x==6 else 0)
+di_data['OT July'] = di_data['OT Month'].apply(lambda x: 1 if x==7 else 0)
+di_data['OT August'] = di_data['OT Month'].apply(lambda x: 1 if x==8 else 0)
+di_data['OT September'] = di_data['OT Month'].apply(lambda x: 1 if x==9 else 0)
+di_data['OT October'] = di_data['OT Month'].apply(lambda x: 1 if x==10 else 0)
+di_data['OT November'] = di_data['OT Month'].apply(lambda x: 1 if x==11 else 0)
+di_data['OT December'] = di_data['OT Month'].apply(lambda x: 1 if x==12 else 0)
+
+day_of_week_counts = pd.DataFrame(di_data['OT Day of Week'].value_counts())
+month_counts = pd.DataFrame(di_data['OT Month'].value_counts())
+hour_counts = pd.DataFrame(di_data['OT Hour'].value_counts())
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
